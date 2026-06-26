@@ -156,3 +156,294 @@ button:disabled { opacity: .65; cursor: wait; }
 @media (max-width: 720px) {
   .hero, .card { padding: 22px; }
 }
+
+@media (max-width: 640px) {
+  .container {
+    width: min(100% - 20px, 1120px);
+    padding: 20px 0 28px;
+  }
+
+  .hero {
+    padding: 22px 18px;
+    border-radius: 20px;
+  }
+
+  .eyebrow {
+    font-size: .78rem;
+  }
+
+  h1 {
+    font-size: clamp(1.8rem, 11vw, 2.6rem);
+  }
+
+  .card {
+    margin-top: 18px;
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .form-grid.two {
+    gap: 12px;
+  }
+
+  .table-layout {
+    grid-template-areas:
+      "self"
+      "right"
+      "top"
+      "left"
+      "center";
+    gap: 12px;
+    margin: 18px 0;
+  }
+
+  .seat-card {
+    gap: 12px;
+    padding: 14px;
+    border-radius: 16px;
+  }
+
+  .seat-heading {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dealer-check {
+    justify-content: flex-end;
+    max-width: 55%;
+    font-size: .85rem;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .table-center {
+    min-height: auto;
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .table-center strong {
+    font-size: 2rem;
+  }
+
+  label {
+    gap: 6px;
+  }
+
+  input {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .total {
+    font-size: .95rem;
+  }
+
+  .table-wrap {
+    margin: 0 -6px;
+    padding: 0 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table {
+    min-width: 760px;
+    margin: 14px 0;
+  }
+
+  .compact {
+    min-width: 680px;
+  }
+
+  th, td {
+    padding: 10px 8px;
+    white-space: nowrap;
+  }
+
+  button {
+    width: 100%;
+    padding: 15px 20px;
+  }
+
+  .history {
+    gap: 14px;
+  }
+
+  .history article {
+    padding: 14px;
+  }
+}
+
+@media (max-width: 380px) {
+  .container {
+    width: min(100% - 14px, 1120px);
+  }
+
+  .hero, .card {
+    padding: 16px;
+  }
+
+  .seat-heading {
+    display: grid;
+  }
+
+  .dealer-check {
+    justify-content: flex-start;
+    max-width: none;
+    text-align: left;
+  }
+}
+
+select {
+  width: 100%;
+  border: 1px solid #d8ceb9;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font: inherit;
+  background: white;
+}
+
+.auth-container {
+  max-width: 760px;
+}
+
+.auth-card {
+  display: grid;
+  gap: 16px;
+}
+
+.user-bar,
+.history-heading,
+.group-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.user-bar {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.group-panel {
+  grid-template-columns: 1fr minmax(220px, .8fr) minmax(280px, 1fr);
+  align-items: end;
+}
+
+.inline-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.history-heading {
+  grid-template-columns: 1fr auto;
+  align-items: start;
+}
+
+.history-controls {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr);
+  gap: 12px;
+}
+
+.help-text {
+  margin: 6px 0 0;
+  color: #7a6f5d;
+}
+
+.secondary-button {
+  border: 1px solid #d8ceb9;
+  background: #fffdf8;
+  color: #0c5f3a;
+}
+
+.secondary-button.inverted {
+  border-color: rgb(255 255 255 / 45%);
+  background: rgb(255 255 255 / 12%);
+  color: white;
+}
+
+@media (max-width: 840px) {
+  .group-panel,
+  .history-heading,
+  .history-controls,
+  .inline-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  select {
+    min-height: 46px;
+    font-size: 16px;
+  }
+
+  .user-bar {
+    grid-template-columns: 1fr;
+  }
+}
+
+.member-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.member-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #eadfce;
+  border-radius: 12px;
+  background: #fffdf8;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #e6f6ec;
+  color: #116232;
+  font-size: .78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.badge.guest {
+  background: #fff4cf;
+  color: #805300;
+}
+
+@media (max-width: 840px) {
+  .member-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .member-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+.ranking-table th:nth-child(2),
+.ranking-table td:nth-child(2) {
+  text-align: left;
+}
+
+.ranking-table td:first-child {
+  font-weight: 800;
+  color: #0c5f3a;
+}
