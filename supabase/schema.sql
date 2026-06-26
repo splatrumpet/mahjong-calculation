@@ -73,6 +73,40 @@ create table if not exists game_results (
   check (player_user_id is not null or guest_player_id is not null)
 );
 
+
+-- Migration helpers for Supabase projects that already ran an earlier schema.
+alter table games add column if not exists user_id uuid references auth.users(id) on delete cascade;
+alter table games add column if not exists group_id uuid references groups(id) on delete cascade;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'games'::regclass
+      and conname = 'games_group_id_played_on_game_number_key'
+  ) then
+    alter table games add constraint games_group_id_played_on_game_number_key unique (group_id, played_on, game_number);
+  end if;
+end $$;
+
+alter table game_results add column if not exists player_user_id uuid references auth.users(id) on delete set null;
+alter table game_results add column if not exists guest_player_id uuid references group_players(id) on delete set null;
+alter table game_results add column if not exists is_starting_dealer boolean not null default false;
+alter table game_results add column if not exists starting_wind text not null default 'east' check (starting_wind in ('east', 'south', 'west', 'north'));
+
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'game_results'::regclass
+      and conname = 'game_results_player_identity_check'
+  ) then
+    alter table game_results
+      add constraint game_results_player_identity_check
+      check (player_user_id is not null or guest_player_id is not null)
+      not valid;
+  end if;
+end $$;
+
 alter table profiles enable row level security;
 alter table groups enable row level security;
 alter table group_memberships enable row level security;
@@ -99,8 +133,66 @@ drop policy if exists "Members can delete guest players" on group_players;
 drop policy if exists "Members can create games" on games;
 drop policy if exists "Members can view games" on games;
 drop policy if exists "Members can create game results" on game_results;
+drop policy if exists "Game owners can create game results" on game_results;
 drop policy if exists "Members can view game results" on game_results;
 drop policy if exists "Members can update game results" on game_results;
+
+
+create or replace function prevent_invitation_identity_changes()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.id is distinct from old.id
+    or new.group_id is distinct from old.group_id
+    or new.email is distinct from old.email
+    or new.invited_by is distinct from old.invited_by
+    or new.created_at is distinct from old.created_at then
+    raise exception 'Only invitation status can be changed';
+  end if;
+
+  return new;
+end;
+$$;
+
+create or replace function prevent_score_result_rewrites()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.id is distinct from old.id
+    or new.game_id is distinct from old.game_id
+    or new.final_points is distinct from old.final_points
+    or new.is_starting_dealer is distinct from old.is_starting_dealer
+    or new.starting_wind is distinct from old.starting_wind
+    or new.rank is distinct from old.rank
+    or new.point_diff_score is distinct from old.point_diff_score
+    or new.rank_point is distinct from old.rank_point
+    or new.oka is distinct from old.oka
+    or new.total_score is distinct from old.total_score
+    or new.created_at is distinct from old.created_at then
+    raise exception 'Recorded score fields cannot be changed';
+  end if;
+
+  if old.guest_player_id is null
+    or new.guest_player_id is not null
+    or new.player_user_id is null then
+    raise exception 'Only guest result ownership transfers are allowed';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists prevent_invitation_identity_changes on group_invitations;
+create trigger prevent_invitation_identity_changes
+  before update on group_invitations
+  for each row execute function prevent_invitation_identity_changes();
+
+drop trigger if exists prevent_score_result_rewrites on game_results;
+create trigger prevent_score_result_rewrites
+  before update on game_results
+  for each row execute function prevent_score_result_rewrites();
 
 create policy "Users can upsert own profile" on profiles
   for insert with check (id = auth.uid());
@@ -168,7 +260,10 @@ create policy "Invited users can view invitations" on group_invitations
 
 create policy "Invited users can update invitations" on group_invitations
   for update using (email = lower(auth.jwt() ->> 'email'))
-  with check (email = lower(auth.jwt() ->> 'email'));
+  with check (
+    email = lower(auth.jwt() ->> 'email')
+    and status in ('accepted', 'declined')
+  );
 
 create policy "Members can create group players" on group_players
   for insert with check (
@@ -218,13 +313,12 @@ create policy "Members can view games" on games
     )
   );
 
-create policy "Members can create game results" on game_results
+create policy "Game owners can create game results" on game_results
   for insert with check (
     exists (
       select 1 from games
-      join group_memberships on group_memberships.group_id = games.group_id
       where games.id = game_results.game_id
-        and group_memberships.user_id = auth.uid()
+        and games.user_id = auth.uid()
     )
   );
 
