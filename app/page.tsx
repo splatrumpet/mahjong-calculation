@@ -1,21 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import {
   calculateScores,
-  DEFAULT_RETURN_POINTS,
   DEFAULT_STARTING_POINTS,
-  M_LEAGUE_RANK_POINTS,
   SEAT_LABELS,
   SEAT_ORDER,
-  START_WIND_LABELS,
   type CalculatedScore,
   type PlayerResult,
   type ScoreSummary,
   type Seat,
   type StartWind,
 } from "@/lib/score";
+import { ScoreTable, StatCard } from "@/app/components";
+import { saveGameWithResults } from "@/lib/game-records";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 
 type SavedGame = {
@@ -56,6 +55,9 @@ type RankingRow = {
 };
 
 const MAX_GUEST_PLAYERS = 10;
+const EXPECTED_TOTAL_POINTS = DEFAULT_STARTING_POINTS * SEAT_ORDER.length;
+
+const scoreSign = (value: number) => (value > 0 ? "+" : "");
 
 const seatClass: Record<Seat, string> = {
   self: "seat-self",
@@ -114,40 +116,8 @@ export default function Home() {
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!user) {
-      setGroups([]);
-      setSelectedGroupId("");
-      setSavedGames([]);
-      setGroupPlayers([]);
-      setIncomingInvitations([]);
-      return;
-    }
-
-    if (user.email) {
-      setPlayers((current) =>
-        current.map((player) => (player.seat === "self" && player.name === "自分" ? { ...player, name: user.email! } : player)),
-      );
-    }
-
-    ensureProfile();
-    loadGroups();
-    loadIncomingInvitations();
-  }, [user]);
-
-  useEffect(() => {
-    if (!selectedGroupId) {
-      setSavedGames([]);
-      setGroupPlayers([]);
-      return;
-    }
-
-    loadGroupPlayers(selectedGroupId);
-    loadGames(selectedGroupId);
-  }, [selectedGroupId]);
-
   const calculatedScores = useMemo(() => calculateScores(players), [players]);
-  const pointTotal = players.reduce((sum, player) => sum + player.finalPoints, 0);
+  const pointTotal = useMemo(() => players.reduce((sum, player) => sum + player.finalPoints, 0), [players]);
   const playerNames = useMemo(
     () => Array.from(new Set(savedGames.flatMap((game) => game.results.map((result) => result.name)))).sort(),
     [savedGames],
@@ -198,16 +168,16 @@ export default function Home() {
   const guestPlayers = groupPlayers.filter((player) => player.isGuest);
   const registeredGroupPlayers = groupPlayers.filter((player) => !player.isGuest && player.userId);
 
-  async function ensureProfile() {
+  const ensureProfile = useCallback(async () => {
     if (!supabase || !user) return;
 
     await supabase.from("profiles").upsert({
       id: user.id,
       display_name: user.email ?? "ユーザー",
     });
-  }
+  }, [user]);
 
-  async function loadGroups() {
+  const loadGroups = useCallback(async () => {
     if (!supabase || !user) return;
 
     const { data, error } = await supabase
@@ -231,9 +201,9 @@ export default function Home() {
 
     setGroups(loadedGroups);
     setSelectedGroupId((current) => current || loadedGroups[0]?.id || "");
-  }
+  }, [user]);
 
-  async function loadIncomingInvitations() {
+  const loadIncomingInvitations = useCallback(async () => {
     if (!supabase || !user?.email) return;
 
     const { data, error } = await supabase
@@ -259,9 +229,9 @@ export default function Home() {
         };
       }),
     );
-  }
+  }, [user?.email]);
 
-  async function loadGroupPlayers(groupId: string) {
+  const loadGroupPlayers = useCallback(async (groupId: string) => {
     if (!supabase) return;
 
     const { data, error } = await supabase
@@ -284,9 +254,9 @@ export default function Home() {
         isGuest: player.is_guest,
       })),
     );
-  }
+  }, []);
 
-  async function loadGames(groupId: string) {
+  const loadGames = useCallback(async (groupId: string) => {
     if (!supabase) return;
 
     const { data, error } = await supabase
@@ -323,7 +293,39 @@ export default function Home() {
           })),
       })),
     );
-  }
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setGroups([]);
+      setSelectedGroupId("");
+      setSavedGames([]);
+      setGroupPlayers([]);
+      setIncomingInvitations([]);
+      return;
+    }
+
+    if (user.email) {
+      setPlayers((current) =>
+        current.map((player) => (player.seat === "self" && player.name === "自分" ? { ...player, name: user.email! } : player)),
+      );
+    }
+
+    ensureProfile();
+    loadGroups();
+    loadIncomingInvitations();
+  }, [ensureProfile, loadGroups, loadIncomingInvitations, user]);
+
+  useEffect(() => {
+    if (!selectedGroupId) {
+      setSavedGames([]);
+      setGroupPlayers([]);
+      return;
+    }
+
+    loadGroupPlayers(selectedGroupId);
+    loadGames(selectedGroupId);
+  }, [loadGames, loadGroupPlayers, selectedGroupId]);
 
   async function handleAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -583,50 +585,21 @@ export default function Home() {
         return;
       }
 
-      const { data: game, error: gameError } = await supabase
-        .from("games")
-        .insert({
-          user_id: user.id,
-          group_id: selectedGroupId,
-          played_on: playedOn,
-          game_number: gameNumber,
-          starting_points: DEFAULT_STARTING_POINTS,
-          return_points: DEFAULT_RETURN_POINTS,
-          rank_points: [...M_LEAGUE_RANK_POINTS],
-        })
-        .select("id")
-        .single();
-
-      if (gameError) {
-        setMessage(`保存に失敗しました: ${gameError.message}`);
+      try {
+        localGame.id = await saveGameWithResults({
+          supabase,
+          userId: user.id,
+          groupId: selectedGroupId,
+          playedOn,
+          gameNumber,
+          scores: calculatedScores,
+          resolvedPlayers,
+        });
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "保存に失敗しました。");
         setIsSaving(false);
         return;
       }
-
-      const { error: resultsError } = await supabase.from("game_results").insert(
-        calculatedScores.map((score) => ({
-          game_id: game.id,
-          player_name: score.name,
-          player_user_id: resolvedPlayers.get(score.name.trim())?.userId ?? null,
-          guest_player_id: resolvedPlayers.get(score.name.trim())?.isGuest ? resolvedPlayers.get(score.name.trim())?.id : null,
-          final_points: score.finalPoints,
-          is_starting_dealer: score.isStartingDealer,
-          starting_wind: score.startWind,
-          rank: score.rank,
-          point_diff_score: score.pointDiffScore,
-          rank_point: score.rankPoint,
-          oka: score.oka,
-          total_score: score.totalScore,
-        })),
-      );
-
-      if (resultsError) {
-        setMessage(`結果の保存に失敗しました: ${resultsError.message}`);
-        setIsSaving(false);
-        return;
-      }
-
-      localGame.id = game.id;
     }
 
     setSavedGames((games) => [localGame, ...games]);
@@ -689,6 +662,11 @@ export default function Home() {
         </div>
         <h1>Mリーグ式の順位点で、半荘結果を席順どおりに記録できます。</h1>
         <p>ログイン中: {user.email}。先に記録先グループを選ぶと、結果をグループ単位・個人単位で確認できます。</p>
+        <div className="hero-stats" aria-label="利用状況">
+          <StatCard label="所属グループ" value={`${groups.length}`} />
+          <StatCard label="保存済み半荘" value={`${savedGames.length}`} />
+          <StatCard label="登録ユーザー" value={`${registeredGroupPlayers.length}`} />
+        </div>
       </section>
 
       <section className="card group-panel">
@@ -851,7 +829,7 @@ export default function Home() {
           </div>
         </section>
 
-        <div className={pointTotal === 100000 ? "total ok" : "total warn"}>合計点: {pointTotal.toLocaleString()}点（通常は100,000点）</div>
+        <div className={pointTotal === EXPECTED_TOTAL_POINTS ? "total ok" : "total warn"}>合計点: {pointTotal.toLocaleString()}点（通常は{EXPECTED_TOTAL_POINTS.toLocaleString()}点）</div>
         <ScoreTable scores={calculatedScores} />
         <button disabled={isSaving || !selectedGroupId} type="submit">{isSaving ? "保存中..." : selectedGroupId ? "この半荘を記録" : "先にグループを選択"}</button>
         {message && <p className="message">{message}</p>}
@@ -886,8 +864,8 @@ export default function Home() {
                     <td>{index + 1}</td>
                     <td>{row.name}</td>
                     <td>{row.games}</td>
-                    <td className="score">{row.totalScore > 0 ? "+" : ""}{row.totalScore.toFixed(1)}</td>
-                    <td>{row.averageScore > 0 ? "+" : ""}{row.averageScore.toFixed(1)}</td>
+                    <td className="score">{scoreSign(row.totalScore)}{row.totalScore.toFixed(1)}</td>
+                    <td>{scoreSign(row.averageScore)}{row.averageScore.toFixed(1)}</td>
                     <td>{row.averageRank.toFixed(2)}</td>
                     <td>{row.topCount}</td>
                   </tr>
@@ -952,49 +930,4 @@ function roundToTwoDecimals(value: number) {
 
 function toScoreSummary({ seat: _seat, ...score }: CalculatedScore): ScoreSummary {
   return score;
-}
-
-function hasSeat(score: ScoreSummary | CalculatedScore): score is CalculatedScore {
-  return "seat" in score;
-}
-
-function ScoreTable({ scores, compact = false }: { scores: Array<ScoreSummary | CalculatedScore>; compact?: boolean }) {
-  const showSeat = scores.some(hasSeat);
-
-  return (
-    <div className="table-wrap">
-      <table className={compact ? "compact" : ""}>
-        <thead>
-          <tr>
-            <th>順位</th>
-            {showSeat && <th>席</th>}
-            <th>ユーザー</th>
-            <th>起家</th>
-            <th>開始家</th>
-            <th>持ち点</th>
-            <th>素点</th>
-            <th>順位点</th>
-            <th>オカ</th>
-            <th>合計</th>
-          </tr>
-        </thead>
-        <tbody>
-          {scores.map((score) => (
-            <tr key={`${score.rank}-${score.name}-${score.startWind}`}>
-              <td>{score.rank}</td>
-              {hasSeat(score) && <td>{SEAT_LABELS[score.seat]}</td>}
-              <td>{score.name}</td>
-              <td>{score.isStartingDealer ? "○" : ""}</td>
-              <td>{START_WIND_LABELS[score.startWind]}</td>
-              <td>{score.finalPoints.toLocaleString()}</td>
-              <td>{score.pointDiffScore.toFixed(1)}</td>
-              <td>{score.rankPoint > 0 ? "+" : ""}{score.rankPoint}</td>
-              <td>{score.oka > 0 ? "+" : ""}{score.oka.toFixed(1)}</td>
-              <td className="score">{score.totalScore > 0 ? "+" : ""}{score.totalScore.toFixed(1)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }
